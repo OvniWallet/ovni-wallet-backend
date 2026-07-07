@@ -1,11 +1,21 @@
-import { Pool } from 'pg';
-import { ENV } from './env';
-import { logger } from './logger';
+// config de conexion a la db, la usa pool.ts
+import 'dotenv/config';
+interface DatabaseConfig {
+  connectionString: string;
+  ssl: { rejectUnauthorized: boolean } | false;
+}
 
-export const pool = new Pool({
-  connectionString: ENV.DATABASE_URL,
-});
+function getDatabaseConfig(): DatabaseConfig {
+  const connectionString = process.env.DATABASE_URL;
 
-pool.on('connect', () => {
-  logger.info('Database pool connected successfully');
-});
+  if (!connectionString) {
+    throw new Error("Falta DATABASE_URL en el .env");
+  }
+
+  return {
+    connectionString,
+    ssl: { rejectUnauthorized: false }, // supabase lo requiere
+  };
+}
+
+export const databaseConfig = getDatabaseConfig();
