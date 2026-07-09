@@ -2,19 +2,34 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { errorHandler } from './middlewares/error-handler.middleware';
+import authRoutes from './modules/auth/auth.routes';
 
 const app = express();
 
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-app.use(morgan('dev'));
+// 🛡️ Middlewares de seguridad y optimización (Lo que hizo tu compañero)
+app.use(helmet()); // Protege la app configurando varios headers HTTP
+app.use(cors());   // Permite que el frontend (React) se conecte al backend
+app.use(express.json()); // Parsea los bodies en formato JSON
+app.use(morgan('dev'));  // Muestra logs de las peticiones en la consola en desarrollo
 
+// 🟢 Endpoint de control de salud (Health Check)
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date() });
 });
 
-app.use(errorHandler);
+// 🚀 Registro de rutas modulares (Lo que agregamos nosotros)
+app.use('/api/v1/auth', authRoutes);
+
+// 🚨 Middleware global de manejo de errores
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const statusCode = err.statusCode || 500;
+  const code = err.code || 'INTERNAL_SERVER_ERROR';
+  
+  res.status(statusCode).json({
+    status: 'error',
+    code,
+    message: err.message || 'Ocurrió un error inesperado en el servidor',
+  });
+});
 
 export default app;
