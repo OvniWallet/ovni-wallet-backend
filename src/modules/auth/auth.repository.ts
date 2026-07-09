@@ -60,4 +60,37 @@ export class AuthRepository {
       client.release();
     }
   }
+
+  async saveRefreshToken(userId: string, token: string): Promise<void> {
+  // 📆 Calculamos la fecha de expiración: 7 días a partir de hoy
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // 🚀 Añadimos 'expires_at' al INSERT para cumplir con la restricción de la DB
+    const query = `
+        INSERT INTO refresh_tokens (user_id, token_hash, revoked, expires_at)
+        VALUES ($1, $2, false, $3);
+    `;
+    await pool.query(query, [userId, token, expiresAt]);
+    }
+
+    async findRefreshToken(token: string): Promise<any | null> {
+    // 🔍 Ahora también validamos que el token no haya expirado en tiempo real
+    const query = `
+        SELECT * FROM refresh_tokens 
+        WHERE token_hash = $1 AND revoked = false AND expires_at > NOW();
+    `;
+    const { rows } = await pool.query(query, [token]);
+    return rows[0] || null;
+    }
+
+    async revokeRefreshToken(tokenId: any): Promise<void> {
+    const query = `
+        UPDATE refresh_tokens 
+        SET revoked = true
+        WHERE id = $1;
+    `;
+    await pool.query(query, [tokenId]);
+    }
+
 }
