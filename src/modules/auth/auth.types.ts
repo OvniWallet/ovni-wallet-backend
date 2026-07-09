@@ -6,8 +6,9 @@ export interface IUserEntity {
   password_hash: string;
   first_name: string;
   last_name: string;
-  country_code: string;
+  country_of_residence: string;
   timezone: string;
+  kyc_status: 'PENDING' | 'VERIFIED' | 'REJECTED';
   created_at: Date;
   updated_at: Date;
 }
