@@ -8,11 +8,11 @@ import { RegisterDTO } from './dto/register.dto';
 
 export class AuthRepository {
   
-  async findByEmail(email: string): Promise<IUserEntity | null> {
-    const query = 'SELECT * FROM users WHERE email = $1;';
-    const { rows } = await pool.query(query, [email]);
-    return rows[0] || null;
-  }
+    async findByEmail(email: string): Promise<IUserEntity | null> {
+        const query = 'SELECT * FROM users WHERE email = $1;';
+        const { rows } = await pool.query(query, [email]);
+        return rows[0] || null;
+    }
 
   async registerUserWithWallet(dto: RegisterDTO, passwordHash: string): Promise<Omit<IUserEntity, 'password_hash' | 'updated_at'>> {
     const client = await pool.connect();
