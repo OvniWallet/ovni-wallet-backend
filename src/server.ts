@@ -7,7 +7,7 @@ import { fetchAndStoreExchangeRates } from './jobs/fetch-exchange-rates.job';
 const PORT = ENV.PORT || 5000;
 
 testDatabaseConnection()
-  .then(() => fetchAndStoreExchangeRates())
+  //.then(() => fetchAndStoreExchangeRates())
   .then(() => {
     app.listen(PORT, () => {
       logger.info(`Server is running on port ${PORT}`);
