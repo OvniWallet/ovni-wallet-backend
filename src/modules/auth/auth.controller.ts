@@ -38,4 +38,17 @@ export class AuthController {
     }
   };
   //FIN METODO REFRESH
+  //INICIO METODO LOGOUT
+  logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const result = await this.authService.logout(req.body);
+        res.status(200).json({
+        status: 'success',
+        data: result,
+        });
+    } catch (error) {
+        next(error);
+    }
+    };
+  //FIN METODO LOGOUT
 }

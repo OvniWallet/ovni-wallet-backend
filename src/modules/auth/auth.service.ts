@@ -9,6 +9,7 @@ import { IRegisterResponse } from './auth.types';
 import { RefreshDTO } from './dto/refresh.dto';
 import { ENV } from '../../config/env';
 import { pool } from '../../db/pool';
+import { LogoutDTO } from './dto/logout.dto';
 
 export class AuthService {
   private authRepository = new AuthRepository();
@@ -124,4 +125,23 @@ export class AuthService {
       refresh_token: newRefreshToken,
     };
   }
+
+    async logout(dto: LogoutDTO): Promise<{ message: string }> {
+    // 1. Buscar si el token existe y está activo
+    const existingToken = await this.authRepository.findRefreshToken(dto.refresh_token);
+    
+    if (!existingToken) {
+        const error = new Error('El token ya es inválido o no existe');
+        (error as any).statusCode = 400;
+        (error as any).code = 'INVALID_OR_ALREADY_REVOKED_TOKEN';
+        throw error;
+    }
+
+    // 2. Revocarlo de manera fulminante
+    await this.authRepository.revokeRefreshToken(existingToken.id);
+
+    return {
+        message: 'Sesión cerrada exitosamente de forma segura',
+    };
+    }
 }
