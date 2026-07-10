@@ -1,7 +1,6 @@
-// controllers del modulo exchange: reciben el request, llaman al service, responden
-
 import { Request, Response } from "express";
 import { getQuote, executeExchangeOperation } from "./exchange.service";
+import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 
 export async function getQuoteController(req: Request, res: Response) {
   try {
@@ -37,9 +36,8 @@ export async function getQuoteController(req: Request, res: Response) {
 
 export async function postExchangeController(req: Request, res: Response) {
   try {
-    // req.user lo inyecta el auth.middleware de Alan
-    const userId = (req as any).user.id;
-    const walletId = (req as any).user.walletId;
+    const userId = (req as any).user.user_id;
+    const walletId = await getWalletIdByUserId(userId);
 
     const { source_currency, target_currency, source_amount_cents, idempotency_key } = req.body;
 

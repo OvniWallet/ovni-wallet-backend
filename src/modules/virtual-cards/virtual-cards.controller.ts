@@ -1,1 +1,88 @@
-export class VirtualCardsController {}
+import { Request, Response } from "express";
+import { listCards, issueCard, blockCardById } from "./virtual-cards.service";
+import { getWalletIdByUserId } from "../../shared/wallet-lookup";
+
+export async function getCardsController(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user.user_id;
+    const walletId = await getWalletIdByUserId(userId);
+
+    const cards = await listCards(walletId);
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        cards: cards.map((c) => ({
+          card_id: c.id,
+          masked_number: c.maskedNumber,
+          status: c.status,
+          currency_default: c.currencyDefault,
+        })),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "error",
+      error: { code: "INTERNAL_ERROR", message: "Error inesperado", details: null },
+    });
+  }
+}
+
+export async function postCardController(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user.user_id;
+    const walletId = await getWalletIdByUserId(userId);
+    const { currency_default } = req.body;
+
+    const card = await issueCard(walletId, currency_default);
+
+    res.status(201).json({
+      status: "success",
+      data: {
+        card_id: card.id,
+        masked_number: card.maskedNumber,
+        status: card.status,
+      },
+    });
+  } catch (err: any) {
+    if (err.message === "MAX_CARDS_REACHED") {
+      return res.status(422).json({
+        status: "error",
+        error: { code: "MAX_CARDS_REACHED", message: "Limite de tarjetas alcanzado", details: null },
+      });
+    }
+    res.status(500).json({
+      status: "error",
+      error: { code: "INTERNAL_ERROR", message: "Error inesperado", details: null },
+    });
+  }
+}
+
+export async function blockCardController(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user.user_id;
+    const walletId = await getWalletIdByUserId(userId);
+    const { id } = req.params;
+
+    await blockCardById(id, walletId);
+
+    res.status(200).json({ status: "success", data: { card_id: id, status: "BLOCKED" } });
+  } catch (err: any) {
+    if (err.message === "CARD_NOT_FOUND") {
+      return res.status(404).json({
+        status: "error",
+        error: { code: "CARD_NOT_FOUND", message: "Tarjeta no encontrada", details: null },
+      });
+    }
+    if (err.message === "NOT_OWNER") {
+      return res.status(403).json({
+        status: "error",
+        error: { code: "NOT_OWNER", message: "No sos el dueño de esta tarjeta", details: null },
+      });
+    }
+    res.status(500).json({
+      status: "error",
+      error: { code: "INTERNAL_ERROR", message: "Error inesperado", details: null },
+    });
+  }
+}
