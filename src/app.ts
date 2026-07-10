@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import authRoutes from './modules/auth/auth.routes';
+import exchangeRoutes from './modules/exchange/exchange.routes';
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.get('/health', (req, res) => {
 
 // 🚀 Registro de rutas modulares (Lo que agregamos nosotros)
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/exchange', exchangeRoutes);
 
 // 🚨 Middleware global de manejo de errores
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
