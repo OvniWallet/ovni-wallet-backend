@@ -6,5 +6,6 @@ const router = Router();
 const controller = new TransactionsController();
 
 router.get('/', isAuth, controller.getHistory);
+router.post('/deposit', isAuth, controller.deposit);
 
 export default router;
