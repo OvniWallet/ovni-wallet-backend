@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import authRoutes from './modules/auth/auth.routes';
 import walletsRoutes from './modules/wallets/wallets.routes';
 import transactionsRoutes from './modules/transactions/transactions.routes';
+import p2pRoutes from './modules/p2p/p2p.routes';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.get('/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/wallets', walletsRoutes);
 app.use('/api/v1/transactions', transactionsRoutes);
+app.use('/api/v1/p2p', p2pRoutes);
 
 // 🚨 Middleware global de manejo de errores
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
