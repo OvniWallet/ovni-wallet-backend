@@ -1,11 +1,29 @@
-import { Pool } from 'pg';
-import { ENV } from './env';
-import { logger } from './logger';
+// config de conexion a la db, la usa pool.ts
+import 'dotenv/config';
 
-export const pool = new Pool({
-  connectionString: ENV.DATABASE_URL,
-});
+interface DatabaseConfig {
+  connectionString: string;
+  ssl: { rejectUnauthorized: boolean } | false;
+}
 
-pool.on('connect', () => {
-  logger.info('Database pool connected successfully');
-});
+function getDatabaseConfig(): DatabaseConfig {
+  const connectionString = process.env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error("Falta DATABASE_URL en el .env");
+  }
+
+  // 💡 DETECCIÓN INTELIGENTE DE SSL:
+  // Si la URL contiene "localhost", "127.0.0.1" o el parámetro sslmode=disable, apagamos SSL.
+  const deshabilitarSSL = 
+    connectionString.includes('localhost') || 
+    connectionString.includes('127.0.0.1') || 
+    connectionString.includes('sslmode=disable');
+
+  return {
+    connectionString,
+    ssl: deshabilitarSSL ? false : { rejectUnauthorized: false }, // Supabase lo requiere remoto, local no.
+  };
+}
+
+export const databaseConfig = getDatabaseConfig();
