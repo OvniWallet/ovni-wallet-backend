@@ -36,7 +36,7 @@ export async function getQuoteController(req: Request, res: Response) {
 
 export async function postExchangeController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
 
     const { source_currency, target_currency, source_amount_cents, idempotency_key } = req.body;
