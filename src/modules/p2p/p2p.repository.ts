@@ -1,6 +1,8 @@
 import { pool } from '../../db/pool';
+import { LedgerService } from '../../ledger/ledger.service';
 
 export class P2PRepository {
+  private ledgerService = new LedgerService();
   // 🛡️ Buscar por llave de idempotencia para evitar duplicados
   async findByIdempotencyKey(key: string) {
     const query = `
@@ -18,11 +20,27 @@ export class P2PRepository {
   }
 
   // 🚀 TRANSFERENCIA ATÓMICA CON SELECT FOR UPDATE ORDENADO
+  // Reintenta ante 40001 (conflicto de serialización), esperado con SERIALIZABLE
   async executeP2PTransfer(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string) {
+    const MAX_RETRIES = 3;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.runTransferAttempt(senderId, recipientId, amountInCents, currency, idempotencyKey);
+      } catch (error: any) {
+        if (error?.code === '40001' && attempt < MAX_RETRIES) {
+          continue; // conflicto de serialización, reintentar
+        }
+        throw error;
+      }
+    }
+    throw new Error('P2P_TRANSFER_RETRY_EXHAUSTED');
+  }
+
+  private async runTransferAttempt(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string) {
     const client = await pool.connect();
     try {
-      // Usamos REPEATABLE READ para asegurar consistencia durante los bloqueos
-      await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      // Nivel exigido por el documento para P2P
+      await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
 
       // 1. Obtener balance_id del emisor
       const senderBalQuery = `
@@ -71,23 +89,16 @@ export class P2PRepository {
         VALUES ($1, 'P2P_TRANSFER', 'COMPLETED', $2)
         RETURNING id;
       `;
-      const txMetadata = JSON.stringify({ description: 'Transferencia P2P', currency, senderId, recipientId });
+      // amount_in_cents guardado para poder validar idempotencia después
+      const txMetadata = JSON.stringify({ description: 'Transferencia P2P', currency, amount_in_cents: amountInCents, senderId, recipientId });
       const txResult = await client.query(insertTxQuery, [idempotencyKey, txMetadata]);
       const transactionId = txResult.rows[0].id;
 
-      // 5. Insertar Asiento Contable: DEBIT (Resta al emisor)
-      const insertDebitQuery = `
-        INSERT INTO ledger_entries (transaction_id, balance_id, type, amount_in_cents, currency)
-        VALUES ($1, $2, 'DEBIT', $3, $4);
-      `;
-      await client.query(insertDebitQuery, [transactionId, senderBalance.id, amountInCents, currency]);
-
-      // 6. Insertar Asiento Contable: CREDIT (Suma al receptor)
-      const insertCreditQuery = `
-        INSERT INTO ledger_entries (transaction_id, balance_id, type, amount_in_cents, currency)
-        VALUES ($1, $2, 'CREDIT', $3, $4);
-      `;
-      await client.query(insertCreditQuery, [transactionId, recipientBalance.id, amountInCents, currency]);
+      // 5. Registrar ambas líneas contables vía el módulo Ledger (valida partida doble)
+      await this.ledgerService.recordEntries(client, transactionId, [
+        { balanceId: senderBalance.id, type: 'DEBIT', amountInCents, currency },
+        { balanceId: recipientBalance.id, type: 'CREDIT', amountInCents, currency },
+      ]);
 
       await client.query('COMMIT');
       return { transactionId };

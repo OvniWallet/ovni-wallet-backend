@@ -58,4 +58,26 @@ export class TransactionsController {
       next(error);
     }
   };
+
+  getById = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+
+      if (!userId) {
+        const error = new Error('No autorizado');
+        (error as any).statusCode = 401;
+        throw error;
+      }
+
+      const { id } = req.params;
+      const result = await this.transactionsService.getTransactionDetail(userId, id);
+
+      res.status(200).json({
+        status: 'success',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }
