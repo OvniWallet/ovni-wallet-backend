@@ -5,7 +5,7 @@ import { simulateSpend } from "./card-spend.service";
 
 export async function getCardsController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
 
     const cards = await listCards(walletId);
