@@ -46,11 +46,23 @@ export class TransactionsService {
     // 🛡️ REGLA DE IDEMPOTENCIA (Fase 6/v2): Evitar procesar dos veces el mismo request
     const existingTx = await this.transactionsRepository.findByIdempotencyKey(idempotency_key);
     if (existingTx) {
+      const storedMetadata = existingTx.metadata || {};
+      const payloadMatches =
+        storedMetadata.currency === currency &&
+        Number(storedMetadata.amount_in_cents) === Number(amount_in_cents);
+
+      if (!payloadMatches) {
+        const error = new Error('La idempotency_key ya fue usada con un payload diferente');
+        (error as any).statusCode = 409;
+        (error as any).code = 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH';
+        throw error;
+      }
+
       return {
         transaction_id: existingTx.id,
         type: existingTx.type,
         status: existingTx.status,
-        _idempotent_reused: true // Flag informativo para nosotros
+        _idempotent_reused: true
       };
     }
 
@@ -69,4 +81,29 @@ export class TransactionsService {
     };
   }
   //FIN METODO PROCESSDEPOSIT
+  async getTransactionDetail(userId: string, transactionId: string) {
+    const rows = await this.transactionsRepository.findTransactionDetailForUser(userId, transactionId);
+
+    if (rows.length === 0) {
+      const error = new Error('No tienes permiso para ver esta transacción');
+      (error as any).statusCode = 403;
+      (error as any).code = 'FORBIDDEN_TRANSACTION_ACCESS';
+      throw error;
+    }
+
+    const { id, type, status, metadata, created_at } = rows[0];
+    return {
+      transaction_id: id,
+      type,
+      status,
+      metadata,
+      created_at,
+      ledger_entries: rows.map(r => ({
+        id: r.ledger_entry_id,
+        type: r.entry_type,
+        amount_in_cents: r.amount_in_cents,
+        currency: r.currency,
+      })),
+    };
+  }
 }
