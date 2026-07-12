@@ -18,6 +18,18 @@ export class P2PService {
     // 2. IDEMPOTENCIA: Verificar si la clave ya fue procesada
     const existingTx = await this.p2pRepository.findByIdempotencyKey(idempotency_key);
     if (existingTx) {
+      const storedMetadata = existingTx.metadata || {};
+      const payloadMatches =
+        storedMetadata.currency === currency &&
+        Number(storedMetadata.amount_in_cents) === Number(amount_in_cents);
+
+      if (!payloadMatches) {
+        const error = new Error('La idempotency_key ya fue usada con un payload diferente');
+        (error as any).statusCode = 409;
+        (error as any).code = 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH';
+        throw error;
+      }
+
       return {
         transaction_id: existingTx.id,
         amount_transferred: amount_in_cents,
