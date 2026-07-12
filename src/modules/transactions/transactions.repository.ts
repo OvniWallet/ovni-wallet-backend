@@ -1,4 +1,5 @@
 import { pool } from '../../db/pool';
+import { LedgerService } from '../../ledger/ledger.service';  
 
 export interface GetTransactionsFilters {
   userId: string;
@@ -9,6 +10,7 @@ export interface GetTransactionsFilters {
 }
 
 export class TransactionsRepository {
+  private ledgerService = new LedgerService();
     //INICIO METODO FINDPAGED
   async findPagedTransactions(filters: GetTransactionsFilters) {
     const { userId, limit, cursor, type, status } = filters;
@@ -55,6 +57,21 @@ export class TransactionsRepository {
   }
   //FIN METODO FINDPAGE
 
+  async findTransactionDetailForUser(userId: string, transactionId: string) {
+    const query = `
+      SELECT t.id, t.type, t.status, t.metadata, t.created_at,
+            le.id AS ledger_entry_id, le.type AS entry_type, le.amount_in_cents, le.currency
+      FROM transactions t
+      JOIN ledger_entries le ON le.transaction_id = t.id
+      JOIN balances b ON b.id = le.balance_id
+      JOIN wallets w ON w.id = b.wallet_id
+      WHERE t.id = $1 AND w.user_id = $2
+      ORDER BY le.id;
+    `;
+    const { rows } = await pool.query(query, [transactionId, userId]);
+    return rows;
+  }
+
   // 🕵️‍♂️ Buscar transacción por llave de idempotencia
   async findByIdempotencyKey(key: string) {
     const query = `
@@ -85,7 +102,7 @@ export class TransactionsRepository {
         VALUES ($1, 'DEPOSIT', 'COMPLETED', $2)
         RETURNING id, type, status;
       `;
-      const txMetadata = JSON.stringify({ description: 'Depósito simulado inicial', currency });
+      const txMetadata = JSON.stringify({ description: 'Depósito simulado inicial', currency, amount_in_cents: amountInCents });
       const txResult = await client.query(insertTxQuery, [idempotencyKey, txMetadata]);
       const newTransaction = txResult.rows[0];
 
@@ -99,11 +116,13 @@ export class TransactionsRepository {
       const balanceId = balanceResult.rows[0].id;
 
       // 4. Insertar el asiento contable de CRÉDITO incluyendo la columna currency 👈 ¡CORREGIDO AQUÍ!
-      const insertLedgerQuery = `
-        INSERT INTO ledger_entries (transaction_id, balance_id, type, amount_in_cents, currency)
-        VALUES ($1, $2, 'CREDIT', $3, $4);
-      `;
-      await client.query(insertLedgerQuery, [newTransaction.id, balanceId, amountInCents, currency]);
+      await this.ledgerService.recordEntry(client, newTransaction.id, {
+        balanceId,
+        type: 'CREDIT',
+        amountInCents,
+        currency,
+      });
+      
 
       await client.query('COMMIT');
       return newTransaction;
