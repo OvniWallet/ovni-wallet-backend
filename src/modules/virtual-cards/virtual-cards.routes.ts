@@ -5,11 +5,11 @@ import {
   blockCardController,
   simulateSpendController,
 } from "./virtual-cards.controller";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import { isAuth } from "../../middlewares/is-auth.middleware";
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(isAuth);
 
 router.get("/", getCardsController);
 router.post("/", postCardController);
