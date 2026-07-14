@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import authRoutes from './modules/auth/auth.routes';
 import exchangeRoutes from './modules/exchange/exchange.routes';
 import virtualCardsRoutes from './modules/virtual-cards/virtual-cards.routes';
+import chatbotRoutes from './modules/chatbot/chatbot.routes';
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.get('/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/exchange', exchangeRoutes);
 app.use('/api/v1/virtual-cards', virtualCardsRoutes);
+app.use('/api/v1/chatbot', chatbotRoutes);
 
 // 🚨 Middleware global de manejo de errores
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
