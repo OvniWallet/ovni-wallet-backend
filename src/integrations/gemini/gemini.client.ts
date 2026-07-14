@@ -1,6 +1,8 @@
+// cliente que envuelve el SDK de Gemini, con el system prompt blindado
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = "gemini-3.5-flash";
 
 const SYSTEM_INSTRUCTION = `
 Sos el asistente financiero de Ovni Wallet. Respondes UNICAMENTE preguntas

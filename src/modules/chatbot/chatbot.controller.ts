@@ -4,7 +4,7 @@ import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 
 export async function postChatQueryController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.sub;
     const walletId = await getWalletIdByUserId(userId);
     const { message } = req.body;
 
@@ -19,6 +19,7 @@ export async function postChatQueryController(req: Request, res: Response) {
 
     res.status(200).json({ status: "success", data: { reply: result.reply } });
   } catch (err) {
+    console.error("Error en chatbot:", err);
     res.status(502).json({
       status: "error",
       error: { code: "EXTERNAL_SERVICE_UNAVAILABLE", message: "El asistente no esta disponible", details: null },
