@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool';
-import { LedgerService } from '../../ledger/ledger.service';  
+import { LedgerService } from '../../ledger/ledger.service';
+import { Geolocation, mergeGeoMetadata } from '../../shared/geolocation';
 
 export interface GetTransactionsFilters {
   userId: string;
@@ -82,7 +83,7 @@ export class TransactionsRepository {
   }
 
   // 🚀 Ejecutar el depósito en una transacción atómica de Base de Datos
-  async createDeposit(userId: string, amountInCents: number, currency: string, idempotencyKey: string) {
+  async createDeposit(userId: string, amountInCents: number, currency: string, idempotencyKey: string, geo: Geolocation = {}) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -102,7 +103,12 @@ export class TransactionsRepository {
         VALUES ($1, 'DEPOSIT', 'COMPLETED', $2)
         RETURNING id, type, status;
       `;
-      const txMetadata = JSON.stringify({ description: 'Depósito simulado inicial', currency, amount_in_cents: amountInCents });
+      const txMetadata = JSON.stringify(
+        mergeGeoMetadata(
+          { description: 'Depósito simulado inicial', currency, amount_in_cents: amountInCents },
+          geo
+        )
+      );
       const txResult = await client.query(insertTxQuery, [idempotencyKey, txMetadata]);
       const newTransaction = txResult.rows[0];
 

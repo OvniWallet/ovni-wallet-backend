@@ -41,7 +41,7 @@ export class TransactionsService {
   //FIN METODO GETHISTORY
   //INICIO METODO PROCESSDEPOSIT
   async processDeposit(userId: string, data: DepositDTO) {
-    const { amount_in_cents, currency, idempotency_key } = data;
+    const { amount_in_cents, currency, idempotency_key, latitude, longitude } = data;
 
     // 🛡️ REGLA DE IDEMPOTENCIA (Fase 6/v2): Evitar procesar dos veces el mismo request
     const existingTx = await this.transactionsRepository.findByIdempotencyKey(idempotency_key);
@@ -71,7 +71,8 @@ export class TransactionsService {
       userId,
       amount_in_cents,
       currency,
-      idempotency_key
+      idempotency_key,
+      { latitude, longitude }
     );
 
     return {
