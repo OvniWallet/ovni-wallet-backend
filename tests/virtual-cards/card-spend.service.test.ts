@@ -39,13 +39,27 @@ describe("card-spend.service", () => {
     vi.clearAllMocks();
   });
 
-  it("devuelve la transaccion original si la idempotency_key ya existe", async () => {
-    (findExistingTransaction as any).mockResolvedValue({ id: "tx-viejo", status: "COMPLETED" });
+  it("devuelve la transaccion original si la idempotency_key ya existe con el mismo payload", async () => {
+    (findExistingTransaction as any).mockResolvedValue({
+      id: "tx-viejo",
+      status: "COMPLETED",
+      requestPayload: { card_id: "card-1", amount_in_cents: 2500, currency: "EUR" },
+    });
 
     const result = await simulateSpend(baseParams);
 
     expect(result).toEqual({ transactionId: "tx-viejo", status: "COMPLETED", reused: true });
     expect(findCardById).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con IDEMPOTENCY_KEY_MISMATCH si el payload difiere", async () => {
+    (findExistingTransaction as any).mockResolvedValue({
+      id: "tx-viejo",
+      status: "COMPLETED",
+      requestPayload: { card_id: "card-1", amount_in_cents: 999, currency: "EUR" },
+    });
+
+    await expect(simulateSpend(baseParams)).rejects.toThrow("IDEMPOTENCY_KEY_MISMATCH");
   });
 
   it("rechaza si la tarjeta no existe", async () => {

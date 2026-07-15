@@ -1,5 +1,7 @@
+// logica de negocio del modulo exchange: cotizar y ejecutar conversiones, con idempotencia
+
 import { getCurrentRate } from "./exchange-rates.repository";
-import { executeExchange } from "./exchange.repository";
+import { executeExchange, findExistingExchangeTransaction } from "./exchange.repository";
 
 interface QuoteParams {
   sourceCurrency: string;
@@ -33,6 +35,22 @@ interface ExecuteParams {
 }
 
 export async function executeExchangeOperation(params: ExecuteParams) {
+  const existing = await findExistingExchangeTransaction(params.idempotencyKey);
+
+  if (existing) {
+    const samePayload =
+      existing.requestPayload &&
+      existing.requestPayload.source_currency === params.sourceCurrency &&
+      existing.requestPayload.target_currency === params.targetCurrency &&
+      existing.requestPayload.source_amount_cents === params.sourceAmountCents;
+
+    if (!samePayload) {
+      throw new Error("IDEMPOTENCY_KEY_MISMATCH");
+    }
+
+    return { transactionId: existing.id, reused: true };
+  }
+
   const rate = await getCurrentRate(params.sourceCurrency, params.targetCurrency);
 
   if (!rate) {
@@ -57,5 +75,6 @@ export async function executeExchangeOperation(params: ExecuteParams) {
     transactionId: result.transactionId,
     rateApplied: rate.rateValue,
     targetAmountCents,
+    reused: false,
   };
 }

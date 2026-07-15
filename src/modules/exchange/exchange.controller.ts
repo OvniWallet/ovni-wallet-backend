@@ -54,11 +54,17 @@ export async function postExchangeController(req: Request, res: Response) {
       status: "success",
       data: {
         transaction_id: result.transactionId,
-        rate_applied: result.rateApplied.toFixed(10),
-        target_amount_cents: result.targetAmountCents,
+        rate_applied: result.rateApplied?.toFixed(10) ?? null,
+        target_amount_cents: result.targetAmountCents ?? null,
       },
     });
   } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_MISMATCH") {
+      return res.status(409).json({
+        status: "error",
+        error: { code: "IDEMPOTENCY_KEY_MISMATCH", message: "La clave ya se uso con otros datos", details: null },
+      });
+    }
     if (err.message === "INSUFFICIENT_FUNDS") {
       return res.status(422).json({
         status: "error",

@@ -109,6 +109,12 @@ export async function simulateSpendController(req: Request, res: Response) {
       data: { transaction_id: result.transactionId, status: result.status },
     });
   } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_MISMATCH") {
+      return res.status(409).json({
+        status: "error",
+        error: { code: "IDEMPOTENCY_KEY_MISMATCH", message: "La clave ya se uso con otros datos", details: null },
+      });
+    }
     if (err.message === "CARD_NOT_FOUND") {
       return res.status(404).json({
         status: "error",

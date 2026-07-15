@@ -5,10 +5,11 @@ vi.mock("../../src/modules/exchange/exchange-rates.repository", () => ({
 }));
 vi.mock("../../src/modules/exchange/exchange.repository", () => ({
   executeExchange: vi.fn(),
+  findExistingExchangeTransaction: vi.fn().mockResolvedValue(null),
 }));
 
 import { getCurrentRate } from "../../src/modules/exchange/exchange-rates.repository";
-import { executeExchange } from "../../src/modules/exchange/exchange.repository";
+import { executeExchange, findExistingExchangeTransaction } from "../../src/modules/exchange/exchange.repository";
 import { getQuote, executeExchangeOperation } from "../../src/modules/exchange/exchange.service";
 
 describe("exchange.service", () => {
@@ -70,5 +71,51 @@ describe("exchange.service", () => {
         idempotencyKey: "idemp-2",
       })
     ).rejects.toThrow("INSUFFICIENT_FUNDS");
+  });
+});
+
+describe("exchange.service - idempotencia", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("devuelve la transaccion original si la key ya existe con el mismo payload", async () => {
+    (findExistingExchangeTransaction as any).mockResolvedValue({
+      id: "tx-viejo",
+      status: "COMPLETED",
+      requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 10000 },
+    });
+
+    const result = await executeExchangeOperation({
+      userId: "user-1",
+      walletId: "wallet-1",
+      sourceCurrency: "USD",
+      targetCurrency: "EUR",
+      sourceAmountCents: 10000,
+      idempotencyKey: "idemp-repetido",
+    });
+
+    expect(result.transactionId).toBe("tx-viejo");
+    expect(result.reused).toBe(true);
+    expect(getCurrentRate).not.toHaveBeenCalled();
+  });
+
+  it("rechaza con IDEMPOTENCY_KEY_MISMATCH si el payload difiere", async () => {
+    (findExistingExchangeTransaction as any).mockResolvedValue({
+      id: "tx-viejo",
+      status: "COMPLETED",
+      requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 5000 },
+    });
+
+    await expect(
+      executeExchangeOperation({
+        userId: "user-1",
+        walletId: "wallet-1",
+        sourceCurrency: "USD",
+        targetCurrency: "EUR",
+        sourceAmountCents: 10000, // distinto al original
+        idempotencyKey: "idemp-repetido",
+      })
+    ).rejects.toThrow("IDEMPOTENCY_KEY_MISMATCH");
   });
 });

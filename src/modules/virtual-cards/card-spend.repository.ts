@@ -1,3 +1,5 @@
+// inserta un CARD_SPEND directo (debito simple) cuando ya hay saldo en la divisa de cobro
+
 import { PoolClient } from "pg";
 import { pool } from "../../db/pool";
 
@@ -9,12 +11,25 @@ interface DirectSpendParams {
   metadata: Record<string, unknown>;
 }
 
-export async function findExistingTransaction(idempotencyKey: string) {
+export interface ExistingSpendTransaction {
+  id: string;
+  status: string;
+  requestPayload: Record<string, unknown> | null;
+}
+
+export async function findExistingTransaction(idempotencyKey: string): Promise<ExistingSpendTransaction | null> {
   const result = await pool.query(
-    `SELECT id, status FROM transactions WHERE idempotency_key = $1`,
+    `SELECT id, status, metadata FROM transactions WHERE idempotency_key = $1`,
     [idempotencyKey]
   );
-  return result.rows[0] ?? null;
+  if (result.rows.length === 0) return null;
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    status: row.status,
+    requestPayload: row.metadata?.request_payload ?? null,
+  };
 }
 
 export async function getBalance(walletId: string, currency: string) {

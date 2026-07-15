@@ -1,5 +1,6 @@
-// ejecuta la conversion dentro de una transaccion sql
-// bloquea los dos balances, inserta transaction mas 2 ledger entries mas detalle de exchange
+// ejecuta la conversion dentro de una transaccion SQL:
+// bloquea los dos balances, inserta transaction + 2 ledger_entries + detalle de exchange
+// respeta idempotencia: si la key ya existe, compara el payload antes de reprocesar
 
 import { PoolClient } from "pg";
 import { pool } from "../../db/pool";
@@ -16,6 +17,29 @@ interface ExecuteExchangeParams {
   idempotencyKey: string;
 }
 
+export interface ExistingExchangeTransaction {
+  id: string;
+  status: string;
+  requestPayload: Record<string, unknown> | null;
+}
+
+export async function findExistingExchangeTransaction(
+  idempotencyKey: string
+): Promise<ExistingExchangeTransaction | null> {
+  const result = await pool.query(
+    `SELECT id, status, metadata FROM transactions WHERE idempotency_key = $1`,
+    [idempotencyKey]
+  );
+  if (result.rows.length === 0) return null;
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    status: row.status,
+    requestPayload: row.metadata?.request_payload ?? null,
+  };
+}
+
 export async function executeExchange(params: ExecuteExchangeParams) {
   const client: PoolClient = await pool.connect();
 
@@ -23,7 +47,6 @@ export async function executeExchange(params: ExecuteExchangeParams) {
     await client.query("BEGIN");
     await client.query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
-    // bloqueamos los dos balances, ordenados por currency para evitar deadlocks
     const [first, second] = [params.sourceCurrency, params.targetCurrency].sort();
 
     const balancesResult = await client.query(
@@ -45,11 +68,20 @@ export async function executeExchange(params: ExecuteExchangeParams) {
       throw new Error("INSUFFICIENT_FUNDS");
     }
 
+    const metadata = {
+      user_id: params.userId,
+      request_payload: {
+        source_currency: params.sourceCurrency,
+        target_currency: params.targetCurrency,
+        source_amount_cents: params.sourceAmountCents,
+      },
+    };
+
     const txResult = await client.query(
       `INSERT INTO transactions (idempotency_key, type, status, metadata)
        VALUES ($1, 'EXCHANGE', 'COMPLETED', $2)
        RETURNING id`,
-      [params.idempotencyKey, JSON.stringify({ user_id: params.userId })]
+      [params.idempotencyKey, JSON.stringify(metadata)]
     );
     const transactionId = txResult.rows[0].id;
 
