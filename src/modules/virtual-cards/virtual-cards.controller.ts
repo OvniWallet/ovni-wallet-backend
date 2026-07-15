@@ -5,7 +5,7 @@ import { simulateSpend } from "./card-spend.service";
 
 export async function getCardsController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
 
     const cards = await listCards(walletId);
@@ -31,7 +31,7 @@ export async function getCardsController(req: Request, res: Response) {
 
 export async function postCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { currency_default } = req.body;
 
@@ -61,7 +61,7 @@ export async function postCardController(req: Request, res: Response) {
 
 export async function blockCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { id } = req.params;
 
@@ -90,7 +90,7 @@ export async function blockCardController(req: Request, res: Response) {
 
 export async function simulateSpendController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { card_id, amount_in_cents, currency, merchant_name, idempotency_key } = req.body;
 
