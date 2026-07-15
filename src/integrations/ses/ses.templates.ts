@@ -7,6 +7,15 @@ const TYPE_LABELS: Record<TransactionEmailType, string> = {
   CARD_SPEND: 'Compra con tarjeta virtual',
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatAmount(amountInCents: number, currency: string): string {
   return `${(amountInCents / 100).toFixed(2)} ${currency}`;
 }
@@ -23,8 +32,8 @@ function buildExtraRowsHtml(extraRows: TransactionEmailContent['extraRows']): st
     .map(
       (row) => `
         <tr>
-          <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">${row.label}</td>
-          <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${row.value}</td>
+          <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">${escapeHtml(row.label)}</td>
+          <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${escapeHtml(row.value)}</td>
         </tr>`
     )
     .join('');
@@ -70,11 +79,11 @@ export function buildTransactionEmailHtml(params: TransactionEmailContent): stri
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Estado</td>
-                    <td style="padding: 8px 0; color: #059669; font-size: 14px; text-align: right; font-weight: 600;">${params.status}</td>
+                    <td style="padding: 8px 0; color: #059669; font-size: 14px; text-align: right; font-weight: 600;">${escapeHtml(params.status)}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">ID de transacción</td>
-                    <td style="padding: 8px 0; color: #111827; font-size: 12px; text-align: right; font-family: monospace;">${params.transactionId}</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 12px; text-align: right; font-family: monospace;">${escapeHtml(params.transactionId)}</td>
                   </tr>
                   ${extraRowsHtml}
                 </table>
