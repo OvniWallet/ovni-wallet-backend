@@ -3,10 +3,10 @@ import express from "express";
 import request from "supertest";
 import { financialRateLimiter } from "../../src/middlewares/rate-limit.middleware";
 
-function buildTestApp(max: number) {
+function buildTestApp(max: number, userId = "user-fijo-para-el-test") {
   const app = express();
   app.use((req, _res, next) => {
-    (req as any).user = { sub: "user-fijo-para-el-test" };
+    (req as any).user = { id: userId };
     next();
   });
   app.use(financialRateLimiter);
@@ -31,5 +31,19 @@ describe("financialRateLimiter", () => {
     const res = await request(app).get("/ping");
     expect(res.status).toBe(429);
     expect(res.body.error.code).toBe("TOO_MANY_REQUESTS");
+  });
+
+  it("limita por usuario (req.user.id), no por IP compartida", async () => {
+    const appUserA = buildTestApp(15, "user-a");
+    const appUserB = buildTestApp(15, "user-b");
+
+    for (let i = 0; i < 15; i++) {
+      await request(appUserA).get("/ping");
+    }
+    const blocked = await request(appUserA).get("/ping");
+    expect(blocked.status).toBe(429);
+
+    const otherUser = await request(appUserB).get("/ping");
+    expect(otherUser.status).toBe(200);
   });
 });

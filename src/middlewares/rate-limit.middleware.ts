@@ -2,7 +2,7 @@ import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { Request } from "express";
 
 function keyByUser(req: Request): string {
-  const userId = (req as any).user?.user_id;
+  const userId = (req as any).user?.id;
   return userId || ipKeyGenerator(req.ip || "anonimo");
 }
 

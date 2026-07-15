@@ -4,7 +4,7 @@ import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 
 export async function postChatQueryController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.sub;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { message } = req.body;
 
