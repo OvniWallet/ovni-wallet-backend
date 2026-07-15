@@ -41,6 +41,7 @@ function buildExtraRowsHtml(extraRows: TransactionEmailContent['extraRows']): st
 
 export function buildTransactionEmailHtml(params: TransactionEmailContent): string {
   const extraRowsHtml = buildExtraRowsHtml(params.extraRows);
+  const safeCurrency = escapeHtml(params.currency);
 
   return `
 <!DOCTYPE html>
@@ -67,11 +68,11 @@ export function buildTransactionEmailHtml(params: TransactionEmailContent): stri
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Monto</td>
-                    <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${formatAmount(params.amountInCents, params.currency)}</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${formatAmount(params.amountInCents, safeCurrency)}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Moneda</td>
-                    <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${params.currency}</td>
+                    <td style="padding: 8px 0; color: #111827; font-size: 14px; text-align: right; font-weight: 600;">${safeCurrency}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Fecha</td>

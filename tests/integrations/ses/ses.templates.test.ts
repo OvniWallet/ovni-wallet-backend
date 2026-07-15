@@ -83,4 +83,19 @@ describe("ses.templates - buildTransactionEmailHtml", () => {
     expect(html).toContain("&lt;svg");
     expect(html).not.toContain("<svg onload");
   });
+
+  it("escapa la divisa para prevenir XSS", () => {
+    const html = buildTransactionEmailHtml({
+      transactionId: "tx-xss-test",
+      type: "DEPOSIT",
+      status: "COMPLETED",
+      amountInCents: 150000,
+      currency: "<script>alert(1)</script>",
+      occurredAt: new Date("2026-07-15T10:00:00Z"),
+    });
+
+    // Verify currency is escaped in both Moneda row and Monto row
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
 });
