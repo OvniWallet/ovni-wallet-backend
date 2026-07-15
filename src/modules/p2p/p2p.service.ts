@@ -5,7 +5,7 @@ export class P2PService {
   private p2pRepository = new P2PRepository();
 
   async processTransfer(senderId: string, senderEmail: string, data: TransferDTO) {
-    const { recipient_email, amount_in_cents, currency, idempotency_key } = data;
+    const { recipient_email, amount_in_cents, currency, idempotency_key, latitude, longitude } = data;
 
     // 1. REGLA: No transferirse a sí mismo
     if (recipient_email.toLowerCase() === senderEmail.toLowerCase()) {
@@ -54,7 +54,8 @@ export class P2PService {
         recipient.id,
         amount_in_cents,
         currency,
-        idempotency_key
+        idempotency_key,
+        { latitude, longitude }
       );
 
       return {
