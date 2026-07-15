@@ -31,7 +31,7 @@ export async function getCardsController(req: Request, res: Response) {
 
 export async function postCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { currency_default } = req.body;
 
@@ -61,7 +61,7 @@ export async function postCardController(req: Request, res: Response) {
 
 export async function blockCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { id } = req.params;
 
@@ -90,7 +90,7 @@ export async function blockCardController(req: Request, res: Response) {
 
 export async function simulateSpendController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { card_id, amount_in_cents, currency, merchant_name, idempotency_key } = req.body;
 
@@ -109,6 +109,12 @@ export async function simulateSpendController(req: Request, res: Response) {
       data: { transaction_id: result.transactionId, status: result.status },
     });
   } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_MISMATCH") {
+      return res.status(409).json({
+        status: "error",
+        error: { code: "IDEMPOTENCY_KEY_MISMATCH", message: "La clave ya se uso con otros datos", details: null },
+      });
+    }
     if (err.message === "CARD_NOT_FOUND") {
       return res.status(404).json({
         status: "error",
