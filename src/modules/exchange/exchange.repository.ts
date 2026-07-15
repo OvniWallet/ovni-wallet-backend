@@ -4,6 +4,7 @@
 
 import { PoolClient } from "pg";
 import { pool } from "../../db/pool";
+import { mergeGeoMetadata } from "../../shared/geolocation";
 
 interface ExecuteExchangeParams {
   userId: string;
@@ -15,6 +16,8 @@ interface ExecuteExchangeParams {
   rateId: string;
   rateApplied: number;
   idempotencyKey: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface ExistingExchangeTransaction {
@@ -100,14 +103,17 @@ async function runExchangeAttempt(params: ExecuteExchangeParams) {
       throw new Error("INSUFFICIENT_FUNDS");
     }
 
-    const metadata = {
-      user_id: params.userId,
-      request_payload: {
-        source_currency: params.sourceCurrency,
-        target_currency: params.targetCurrency,
-        source_amount_cents: params.sourceAmountCents,
+    const metadata = mergeGeoMetadata(
+      {
+        user_id: params.userId,
+        request_payload: {
+          source_currency: params.sourceCurrency,
+          target_currency: params.targetCurrency,
+          source_amount_cents: params.sourceAmountCents,
+        },
       },
-    };
+      { latitude: params.latitude, longitude: params.longitude }
+    );
 
     const txResult = await client.query(
       `INSERT INTO transactions (idempotency_key, type, status, metadata)

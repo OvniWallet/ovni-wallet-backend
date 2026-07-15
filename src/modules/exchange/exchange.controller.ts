@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { getQuote, executeExchangeOperation } from "./exchange.service";
 import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 import { notifyTransactionEmail } from "../../integrations/ses/ses.notifications";
+import { geolocationSchema } from "../../shared/geolocation";
 
 export async function getQuoteController(req: Request, res: Response) {
   try {
@@ -39,9 +40,18 @@ export async function postExchangeController(req: Request, res: Response) {
   try {
     const userId = (req as any).user.id;
     const userEmail = (req as any).user.email;
-    const walletId = await getWalletIdByUserId(userId);
 
-    const { source_currency, target_currency, source_amount_cents, idempotency_key } = req.body;
+    const { source_currency, target_currency, source_amount_cents, idempotency_key, latitude, longitude } = req.body;
+
+    const geoResult = geolocationSchema.safeParse({ latitude, longitude });
+    if (!geoResult.success) {
+      return res.status(400).json({
+        status: "error",
+        error: { code: "INVALID_INPUT", message: "Coordenadas inválidas", details: geoResult.error.format() },
+      });
+    }
+
+    const walletId = await getWalletIdByUserId(userId);
 
     const result = await executeExchangeOperation({
       userId,
@@ -50,6 +60,8 @@ export async function postExchangeController(req: Request, res: Response) {
       targetCurrency: target_currency,
       sourceAmountCents: source_amount_cents,
       idempotencyKey: idempotency_key,
+      latitude: geoResult.data.latitude,
+      longitude: geoResult.data.longitude,
     });
 
     if (!result.reused) {

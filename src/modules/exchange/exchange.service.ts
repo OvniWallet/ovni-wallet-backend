@@ -36,6 +36,8 @@ interface ExecuteParams {
   targetCurrency: string;
   sourceAmountCents: number;
   idempotencyKey: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 function matchesExistingPayload(existing: ExistingExchangeTransaction, params: ExecuteParams): boolean {
@@ -86,6 +88,8 @@ export async function executeExchangeOperation(params: ExecuteParams) {
       rateId: rate.id,
       rateApplied: rate.rateValue,
       idempotencyKey: params.idempotencyKey,
+      latitude: params.latitude,
+      longitude: params.longitude,
     });
 
     return {
