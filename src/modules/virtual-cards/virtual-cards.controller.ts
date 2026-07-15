@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { listCards, issueCard, blockCardById } from "./virtual-cards.service";
 import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 import { simulateSpend } from "./card-spend.service";
+import { notifyTransactionEmail } from "../../integrations/ses/ses.notifications";
 
 export async function getCardsController(req: Request, res: Response) {
   try {
@@ -91,6 +92,7 @@ export async function blockCardController(req: Request, res: Response) {
 export async function simulateSpendController(req: Request, res: Response) {
   try {
     const userId = (req as any).user.id;
+    const userEmail = (req as any).user.email;
     const walletId = await getWalletIdByUserId(userId);
     const { card_id, amount_in_cents, currency, merchant_name, idempotency_key } = req.body;
 
@@ -103,6 +105,19 @@ export async function simulateSpendController(req: Request, res: Response) {
       merchantName: merchant_name,
       idempotencyKey: idempotency_key,
     });
+
+    if (result.status === "COMPLETED" && !result.reused) {
+      await notifyTransactionEmail({
+        toEmail: userEmail,
+        transactionId: result.transactionId,
+        type: 'CARD_SPEND',
+        status: result.status,
+        amountInCents: amount_in_cents,
+        currency,
+        occurredAt: new Date(),
+        extraRows: [{ label: 'Comercio', value: merchant_name }],
+      });
+    }
 
     res.status(result.status === "COMPLETED" ? 201 : 200).json({
       status: "success",
