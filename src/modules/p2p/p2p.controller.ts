@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../../middlewares/is-auth.middleware';
 import { P2PService } from './p2p.service';
 import { transferSchema } from './dto/transfer.dto';
+import { notifyTransactionEmail } from '../../integrations/ses/ses.notifications';
 
 export class P2PController {
   private p2pService = new P2PService();
@@ -28,6 +29,31 @@ export class P2PController {
       }
 
       const result = await this.p2pService.processTransfer(senderId, senderEmail, parseResult.data);
+
+      if (!(result as any)._idempotent_reused) {
+        const occurredAt = new Date();
+        await notifyTransactionEmail({
+          toEmail: senderEmail,
+          transactionId: result.transaction_id,
+          type: 'P2P_TRANSFER',
+          status: 'COMPLETED',
+          amountInCents: result.amount_transferred,
+          currency: result.currency,
+          occurredAt,
+          extraRows: [{ label: 'Destinatario', value: parseResult.data.recipient_email }],
+        });
+
+        await notifyTransactionEmail({
+          toEmail: parseResult.data.recipient_email,
+          transactionId: result.transaction_id,
+          type: 'P2P_TRANSFER',
+          status: 'COMPLETED',
+          amountInCents: result.amount_transferred,
+          currency: result.currency,
+          occurredAt,
+          extraRows: [{ label: 'Remitente', value: senderEmail }],
+        });
+      }
 
       res.status(201).json({
         status: 'success',
