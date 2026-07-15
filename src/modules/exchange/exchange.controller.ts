@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { getQuote, executeExchangeOperation } from "./exchange.service";
 import { getWalletIdByUserId } from "../../shared/wallet-lookup";
+import { notifyTransactionEmail } from "../../integrations/ses/ses.notifications";
 
 export async function getQuoteController(req: Request, res: Response) {
   try {
@@ -37,6 +38,7 @@ export async function getQuoteController(req: Request, res: Response) {
 export async function postExchangeController(req: Request, res: Response) {
   try {
     const userId = (req as any).user.id;
+    const userEmail = (req as any).user.email;
     const walletId = await getWalletIdByUserId(userId);
 
     const { source_currency, target_currency, source_amount_cents, idempotency_key } = req.body;
@@ -49,6 +51,28 @@ export async function postExchangeController(req: Request, res: Response) {
       sourceAmountCents: source_amount_cents,
       idempotencyKey: idempotency_key,
     });
+
+    if (!result.reused) {
+      await notifyTransactionEmail({
+        toEmail: userEmail,
+        transactionId: result.transactionId,
+        type: 'EXCHANGE',
+        status: 'COMPLETED',
+        amountInCents: source_amount_cents,
+        currency: source_currency,
+        occurredAt: new Date(),
+        extraRows: [
+          {
+            label: 'Convertido a',
+            value: `${((result.targetAmountCents ?? 0) / 100).toFixed(2)} ${target_currency}`,
+          },
+          {
+            label: 'Tasa aplicada',
+            value: result.rateApplied ? result.rateApplied.toFixed(10) : 'N/D',
+          },
+        ],
+      });
+    }
 
     res.status(201).json({
       status: "success",
