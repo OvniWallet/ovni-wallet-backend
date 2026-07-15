@@ -7,6 +7,7 @@ import {
   getBalance,
   insertDirectCardSpend,
   insertFailedCardSpend,
+  ExistingSpendTransaction,
 } from "./card-spend.repository";
 import { getQuote, executeExchangeOperation } from "../exchange/exchange.service";
 
@@ -28,21 +29,54 @@ function buildRequestPayload(params: SimulateSpendParams) {
   };
 }
 
+function matchesExistingPayload(existing: ExistingSpendTransaction, params: SimulateSpendParams): boolean {
+  const requested = buildRequestPayload(params);
+  return Boolean(
+    existing.requestPayload &&
+      existing.requestPayload.card_id === requested.card_id &&
+      existing.requestPayload.amount_in_cents === requested.amount_in_cents &&
+      existing.requestPayload.currency === requested.currency
+  );
+}
+
+function reuseOrThrowMismatch(existing: ExistingSpendTransaction, params: SimulateSpendParams) {
+  if (!matchesExistingPayload(existing, params)) {
+    throw new Error("IDEMPOTENCY_KEY_MISMATCH");
+  }
+  return { transactionId: existing.id, status: existing.status, reused: true };
+}
+
+// wrapper idempotente: si otra request concurrente ya inserto con esta
+// idempotency_key (23505 traducido a IDEMPOTENCY_KEY_CONFLICT en el repository),
+// relee la transaccion ganadora en vez de devolver un 500
+async function insertDirectCardSpendIdempotent(
+  params: SimulateSpendParams,
+  insertParams: { balanceId: string; currency: string; amountCents: number; metadata: Record<string, unknown> }
+) {
+  try {
+    const transactionId = await insertDirectCardSpend({
+      balanceId: insertParams.balanceId,
+      currency: insertParams.currency,
+      amountCents: insertParams.amountCents,
+      idempotencyKey: params.idempotencyKey,
+      metadata: insertParams.metadata,
+    });
+    return { transactionId, status: "COMPLETED", reused: false };
+  } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_CONFLICT") {
+      const concurrent = await findExistingTransaction(params.idempotencyKey);
+      if (concurrent) {
+        return reuseOrThrowMismatch(concurrent, params);
+      }
+    }
+    throw err;
+  }
+}
+
 export async function simulateSpend(params: SimulateSpendParams) {
   const existing = await findExistingTransaction(params.idempotencyKey);
   if (existing) {
-    const requested = buildRequestPayload(params);
-    const samePayload =
-      existing.requestPayload &&
-      existing.requestPayload.card_id === requested.card_id &&
-      existing.requestPayload.amount_in_cents === requested.amount_in_cents &&
-      existing.requestPayload.currency === requested.currency;
-
-    if (!samePayload) {
-      throw new Error("IDEMPOTENCY_KEY_MISMATCH");
-    }
-
-    return { transactionId: existing.id, status: existing.status, reused: true };
+    return reuseOrThrowMismatch(existing, params);
   }
 
   const card = await findCardById(params.cardId);
@@ -58,14 +92,12 @@ export async function simulateSpend(params: SimulateSpendParams) {
   // 1. cobro directo en la divisa de la compra
   const directBalance = await getBalance(params.walletId, params.currency);
   if (directBalance && directBalance.amountCents >= params.amountCents) {
-    const transactionId = await insertDirectCardSpend({
+    return insertDirectCardSpendIdempotent(params, {
       balanceId: directBalance.id,
       currency: params.currency,
       amountCents: params.amountCents,
-      idempotencyKey: params.idempotencyKey,
       metadata,
     });
-    return { transactionId, status: "COMPLETED", reused: false };
   }
 
   // 2. si no alcanza, convertimos justo lo necesario desde la divisa default de la tarjeta
@@ -92,14 +124,12 @@ export async function simulateSpend(params: SimulateSpendParams) {
 
         const convertedBalance = await getBalance(params.walletId, params.currency);
         if (convertedBalance && convertedBalance.amountCents >= params.amountCents) {
-          const transactionId = await insertDirectCardSpend({
+          return insertDirectCardSpendIdempotent(params, {
             balanceId: convertedBalance.id,
             currency: params.currency,
             amountCents: params.amountCents,
-            idempotencyKey: params.idempotencyKey,
             metadata: { ...metadata, triggered_by_exchange_transaction_id: exchangeResult.transactionId },
           });
-          return { transactionId, status: "COMPLETED", reused: false };
         }
       }
     }

@@ -63,8 +63,12 @@ export async function insertDirectCardSpend(params: DirectSpendParams): Promise<
 
     await client.query("COMMIT");
     return transactionId;
-  } catch (err) {
+  } catch (err: any) {
     await client.query("ROLLBACK");
+    // otra request concurrente ya inserto una transaction con esta idempotency_key
+    if (err?.code === "23505") {
+      throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+    }
     throw err;
   } finally {
     client.release();

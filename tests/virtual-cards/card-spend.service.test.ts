@@ -126,4 +126,22 @@ describe("card-spend.service", () => {
     await expect(simulateSpend(baseParams)).rejects.toThrow("INSUFFICIENT_FUNDS");
     expect(insertFailedCardSpend).toHaveBeenCalled();
   });
+
+  it("ante IDEMPOTENCY_KEY_CONFLICT (carrera concurrente) relee y devuelve la transaccion ganadora", async () => {
+    (findExistingTransaction as any)
+      .mockResolvedValueOnce(null) // chequeo inicial: todavia no existe
+      .mockResolvedValueOnce({
+        // se relee tras el 23505 -> IDEMPOTENCY_KEY_CONFLICT: otra request ya la inserto
+        id: "tx-ganadora",
+        status: "COMPLETED",
+        requestPayload: { card_id: "card-1", amount_in_cents: 2500, currency: "EUR" },
+      });
+    (findCardById as any).mockResolvedValue({ walletId: "wallet-1", status: "ACTIVE", currencyDefault: "USD" });
+    (getBalance as any).mockResolvedValue({ id: "balance-eur", amountCents: 5000 });
+    (insertDirectCardSpend as any).mockRejectedValue(new Error("IDEMPOTENCY_KEY_CONFLICT"));
+
+    const result = await simulateSpend(baseParams);
+
+    expect(result).toEqual({ transactionId: "tx-ganadora", status: "COMPLETED", reused: true });
+  });
 });

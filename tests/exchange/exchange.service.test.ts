@@ -84,6 +84,8 @@ describe("exchange.service - idempotencia", () => {
       id: "tx-viejo",
       status: "COMPLETED",
       requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 10000 },
+      rateApplied: 0.91,
+      targetAmountCents: 9100,
     });
 
     const result = await executeExchangeOperation({
@@ -97,6 +99,8 @@ describe("exchange.service - idempotencia", () => {
 
     expect(result.transactionId).toBe("tx-viejo");
     expect(result.reused).toBe(true);
+    expect(result.rateApplied).toBe(0.91);
+    expect(result.targetAmountCents).toBe(9100);
     expect(getCurrentRate).not.toHaveBeenCalled();
   });
 
@@ -105,6 +109,8 @@ describe("exchange.service - idempotencia", () => {
       id: "tx-viejo",
       status: "COMPLETED",
       requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 5000 },
+      rateApplied: 0.91,
+      targetAmountCents: 4550,
     });
 
     await expect(
@@ -115,6 +121,59 @@ describe("exchange.service - idempotencia", () => {
         targetCurrency: "EUR",
         sourceAmountCents: 10000, // distinto al original
         idempotencyKey: "idemp-repetido",
+      })
+    ).rejects.toThrow("IDEMPOTENCY_KEY_MISMATCH");
+  });
+
+  it("ante IDEMPOTENCY_KEY_CONFLICT (carrera concurrente) relee y devuelve la transaccion ganadora", async () => {
+    (findExistingExchangeTransaction as any)
+      .mockResolvedValueOnce(null) // chequeo inicial: todavia no existe
+      .mockResolvedValueOnce({
+        // se relee tras el 23505 -> IDEMPOTENCY_KEY_CONFLICT: otra request ya la inserto
+        id: "tx-ganadora",
+        status: "COMPLETED",
+        requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 10000 },
+        rateApplied: 0.9,
+        targetAmountCents: 9000,
+      });
+    (getCurrentRate as any).mockResolvedValue({ id: "rate-1", rateValue: 0.9 });
+    (executeExchange as any).mockRejectedValue(new Error("IDEMPOTENCY_KEY_CONFLICT"));
+
+    const result = await executeExchangeOperation({
+      userId: "user-1",
+      walletId: "wallet-1",
+      sourceCurrency: "USD",
+      targetCurrency: "EUR",
+      sourceAmountCents: 10000,
+      idempotencyKey: "idemp-carrera",
+    });
+
+    expect(result.transactionId).toBe("tx-ganadora");
+    expect(result.reused).toBe(true);
+    expect(result.rateApplied).toBe(0.9);
+  });
+
+  it("si al releer tras IDEMPOTENCY_KEY_CONFLICT el payload no coincide, rechaza con IDEMPOTENCY_KEY_MISMATCH", async () => {
+    (findExistingExchangeTransaction as any)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "tx-ganadora",
+        status: "COMPLETED",
+        requestPayload: { source_currency: "USD", target_currency: "EUR", source_amount_cents: 5000 },
+        rateApplied: 0.9,
+        targetAmountCents: 4500,
+      });
+    (getCurrentRate as any).mockResolvedValue({ id: "rate-1", rateValue: 0.9 });
+    (executeExchange as any).mockRejectedValue(new Error("IDEMPOTENCY_KEY_CONFLICT"));
+
+    await expect(
+      executeExchangeOperation({
+        userId: "user-1",
+        walletId: "wallet-1",
+        sourceCurrency: "USD",
+        targetCurrency: "EUR",
+        sourceAmountCents: 10000,
+        idempotencyKey: "idemp-carrera-2",
       })
     ).rejects.toThrow("IDEMPOTENCY_KEY_MISMATCH");
   });
