@@ -4,13 +4,33 @@ import { GoogleGenerativeAI, GoogleGenerativeAIAbortError } from "@google/genera
 
 const MODEL_NAME = "gemini-3.5-flash";
 
-// la API de Gemini devuelve 503 con cierta frecuencia por alta demanda
-// ("Spikes in demand are usually temporary" segun el propio mensaje de error);
-// reintentamos una vez esos casos transitorios, no errores de request (400/401/404).
+// la API de Gemini devuelve 429/503 con cierta frecuencia (cuota del free
+// tier o alta demanda). Google indica en el propio error cuanto esperar
+// (errorDetails -> RetryInfo.retryDelay, ej. "58s"); antes esperabamos un
+// segundo fijo sin mirar ese dato, lo que hacia fallar reintentos que
+// Google ya habia avisado que iban a fallar. Ahora respetamos ese valor,
+// acotado a un techo razonable para no colgar la respuesta al usuario.
 const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_ATTEMPTS = 2;
-const RETRY_DELAY_MS = 1000;
+const MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 1500;
+const MAX_RETRY_DELAY_MS = 5000;
 const RETRYABLE_STATUS_CODES = [429, 503];
+
+function getSuggestedRetryDelayMs(err: any): number | null {
+  const details = err?.errorDetails;
+  if (!Array.isArray(details)) return null;
+
+  const retryInfo = details.find(
+    (d) => typeof d?.["@type"] === "string" && d["@type"].includes("RetryInfo")
+  );
+  const retryDelay = retryInfo?.retryDelay;
+  if (typeof retryDelay !== "string") return null;
+
+  const match = retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
+  if (!match) return null;
+
+  return Math.round(parseFloat(match[1]) * 1000);
+}
 
 const SYSTEM_INSTRUCTION = `
 Sos el asistente financiero de Ovni Wallet. Respondes UNICAMENTE preguntas
@@ -63,7 +83,9 @@ export async function askGemini(userMessage: string, financialContext: string): 
       // lo tratamos como transitorio igual que un 429/503 explicito
       const isRetryable = RETRYABLE_STATUS_CODES.includes(err?.status) || err instanceof GoogleGenerativeAIAbortError;
       if (isRetryable && attempt < MAX_ATTEMPTS) {
-        await sleep(RETRY_DELAY_MS);
+        const suggestedDelay = getSuggestedRetryDelayMs(err);
+        const delay = suggestedDelay !== null ? Math.min(suggestedDelay, MAX_RETRY_DELAY_MS) : DEFAULT_RETRY_DELAY_MS;
+        await sleep(delay);
         continue;
       }
       throw err;
