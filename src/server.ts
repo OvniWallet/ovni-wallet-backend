@@ -9,7 +9,7 @@ const PORT = ENV.PORT || 5000;
 testDatabaseConnection()
   //.then(() => fetchAndStoreExchangeRates())
   .then(() => {
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server is running on port ${PORT}`);
     });
   })
