@@ -46,7 +46,7 @@ describe("gemini.client - resiliencia ante fallos transitorios", () => {
     generateContentMock.mockRejectedValue(httpError("503 Service Unavailable", 503));
 
     await expect(askGemini("hola", "contexto")).rejects.toThrow("503 Service Unavailable");
-    expect(generateContentMock).toHaveBeenCalledTimes(2);
+    expect(generateContentMock).toHaveBeenCalledTimes(3);
   });
 
   it("reintenta ante un timeout/abort (mismo tratamiento que 503)", async () => {
