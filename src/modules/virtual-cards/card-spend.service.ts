@@ -10,6 +10,7 @@ import {
   ExistingSpendTransaction,
 } from "./card-spend.repository";
 import { getQuote, executeExchangeOperation } from "../exchange/exchange.service";
+import { mergeGeoMetadata } from "../../shared/geolocation";
 
 interface SimulateSpendParams {
   cardId: string;
@@ -19,6 +20,8 @@ interface SimulateSpendParams {
   currency: string;
   merchantName: string;
   idempotencyKey: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 function buildRequestPayload(params: SimulateSpendParams) {
@@ -84,10 +87,13 @@ export async function simulateSpend(params: SimulateSpendParams) {
   if (card.walletId !== params.walletId) throw new Error("NOT_OWNER");
   if (card.status === "BLOCKED") throw new Error("CARD_BLOCKED");
 
-  const metadata = {
-    merchant_name: params.merchantName,
-    request_payload: buildRequestPayload(params),
-  };
+  const metadata = mergeGeoMetadata(
+    {
+      merchant_name: params.merchantName,
+      request_payload: buildRequestPayload(params),
+    },
+    { latitude: params.latitude, longitude: params.longitude }
+  );
 
   // 1. cobro directo en la divisa de la compra
   const directBalance = await getBalance(params.walletId, params.currency);
