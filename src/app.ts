@@ -16,6 +16,12 @@ import chatbotRoutes from './modules/chatbot/chatbot.routes';
 
 const app = express();
 
+// Railway (y la mayoria de los PaaS) enrutan el trafico a traves de un proxy
+// reverso; sin esto, req.ip devuelve la IP interna del proxy para todas las
+// requests (rompe el rate-limit por IP) y express-rate-limit rechaza el
+// header X-Forwarded-For por no confiar en el proxy.
+app.set('trust proxy', 1);
+
 // 🛡️ Middlewares de seguridad y optimización
 app.use(helmet()); 
 app.use(cors());   
