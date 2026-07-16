@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool';
 import { LedgerService } from '../../ledger/ledger.service';
+import { Geolocation, mergeGeoMetadata } from '../../shared/geolocation';
 
 export class P2PRepository {
   private ledgerService = new LedgerService();
@@ -21,11 +22,11 @@ export class P2PRepository {
 
   // 🚀 TRANSFERENCIA ATÓMICA CON SELECT FOR UPDATE ORDENADO
   // Reintenta ante 40001 (conflicto de serialización), esperado con SERIALIZABLE
-  async executeP2PTransfer(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string) {
+  async executeP2PTransfer(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string, geo: Geolocation = {}) {
     const MAX_RETRIES = 3;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await this.runTransferAttempt(senderId, recipientId, amountInCents, currency, idempotencyKey);
+        return await this.runTransferAttempt(senderId, recipientId, amountInCents, currency, idempotencyKey, geo);
       } catch (error: any) {
         if (error?.code === '40001' && attempt < MAX_RETRIES) {
           continue; // conflicto de serialización, reintentar
@@ -36,7 +37,7 @@ export class P2PRepository {
     throw new Error('P2P_TRANSFER_RETRY_EXHAUSTED');
   }
 
-  private async runTransferAttempt(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string) {
+  private async runTransferAttempt(senderId: string, recipientId: string, amountInCents: number, currency: string, idempotencyKey: string, geo: Geolocation = {}) {
     const client = await pool.connect();
     try {
       // Nivel exigido por el documento para P2P
@@ -90,7 +91,12 @@ export class P2PRepository {
         RETURNING id;
       `;
       // amount_in_cents guardado para poder validar idempotencia después
-      const txMetadata = JSON.stringify({ description: 'Transferencia P2P', currency, amount_in_cents: amountInCents, senderId, recipientId });
+      const txMetadata = JSON.stringify(
+        mergeGeoMetadata(
+          { description: 'Transferencia P2P', currency, amount_in_cents: amountInCents, senderId, recipientId },
+          geo
+        )
+      );
       const txResult = await client.query(insertTxQuery, [idempotencyKey, txMetadata]);
       const transactionId = txResult.rows[0].id;
 

@@ -1,5 +1,6 @@
 import { TransactionsRepository } from './transactions.repository';
 import { DepositDTO } from './dto/deposit.dto';
+import { findUserNamesByIds } from '../../shared/user-lookup';
 
 export class TransactionsService {
   private transactionsRepository = new TransactionsRepository();
@@ -41,7 +42,7 @@ export class TransactionsService {
   //FIN METODO GETHISTORY
   //INICIO METODO PROCESSDEPOSIT
   async processDeposit(userId: string, data: DepositDTO) {
-    const { amount_in_cents, currency, idempotency_key } = data;
+    const { amount_in_cents, currency, idempotency_key, latitude, longitude } = data;
 
     // 🛡️ REGLA DE IDEMPOTENCIA (Fase 6/v2): Evitar procesar dos veces el mismo request
     const existingTx = await this.transactionsRepository.findByIdempotencyKey(idempotency_key);
@@ -71,7 +72,8 @@ export class TransactionsService {
       userId,
       amount_in_cents,
       currency,
-      idempotency_key
+      idempotency_key,
+      { latitude, longitude }
     );
 
     return {
@@ -92,11 +94,13 @@ export class TransactionsService {
     }
 
     const { id, type, status, metadata, created_at } = rows[0];
+    const enrichedMetadata = await this.enrichMetadataWithNames(type, metadata);
+
     return {
       transaction_id: id,
       type,
       status,
-      metadata,
+      metadata: enrichedMetadata,
       created_at,
       ledger_entries: rows.map(r => ({
         id: r.ledger_entry_id,
@@ -104,6 +108,28 @@ export class TransactionsService {
         amount_in_cents: r.amount_in_cents,
         currency: r.currency,
       })),
+    };
+  }
+
+  // Agrega sender_name/recipient_name al metadata de una transferencia P2P,
+  // resolviendo los ids ya guardados contra la tabla users. Solo aplica al
+  // detalle de una transaccion que el usuario ya tiene permiso de ver.
+  private async enrichMetadataWithNames(type: string, metadata: any) {
+    if (type !== 'P2P_TRANSFER' || !metadata) return metadata;
+
+    const { senderId, recipientId } = metadata;
+    if (typeof senderId !== 'string' || typeof recipientId !== 'string') return metadata;
+
+    const names = await findUserNamesByIds([senderId, recipientId]);
+    const formatName = (id: string) => {
+      const info = names[id];
+      return info ? `${info.first_name} ${info.last_name}` : undefined;
+    };
+
+    return {
+      ...metadata,
+      sender_name: formatName(senderId),
+      recipient_name: formatName(recipientId),
     };
   }
 }

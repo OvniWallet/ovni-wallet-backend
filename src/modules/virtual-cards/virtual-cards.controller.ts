@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import { listCards, issueCard, blockCardById } from "./virtual-cards.service";
 import { getWalletIdByUserId } from "../../shared/wallet-lookup";
 import { simulateSpend } from "./card-spend.service";
+import { notifyTransactionEmail } from "../../integrations/ses/ses.notifications";
+import { geolocationSchema } from "../../shared/geolocation";
 
 export async function getCardsController(req: Request, res: Response) {
   try {
@@ -31,7 +33,7 @@ export async function getCardsController(req: Request, res: Response) {
 
 export async function postCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { currency_default } = req.body;
 
@@ -61,7 +63,7 @@ export async function postCardController(req: Request, res: Response) {
 
 export async function blockCardController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
     const walletId = await getWalletIdByUserId(userId);
     const { id } = req.params;
 
@@ -90,9 +92,19 @@ export async function blockCardController(req: Request, res: Response) {
 
 export async function simulateSpendController(req: Request, res: Response) {
   try {
-    const userId = (req as any).user.user_id;
+    const userId = (req as any).user.id;
+    const userEmail = (req as any).user.email;
+    const { card_id, amount_in_cents, currency, merchant_name, idempotency_key, latitude, longitude } = req.body;
+
+    const geoResult = geolocationSchema.safeParse({ latitude, longitude });
+    if (!geoResult.success) {
+      return res.status(400).json({
+        status: "error",
+        error: { code: "INVALID_INPUT", message: "Coordenadas inválidas", details: geoResult.error.format() },
+      });
+    }
+
     const walletId = await getWalletIdByUserId(userId);
-    const { card_id, amount_in_cents, currency, merchant_name, idempotency_key } = req.body;
 
     const result = await simulateSpend({
       cardId: card_id,
@@ -102,13 +114,34 @@ export async function simulateSpendController(req: Request, res: Response) {
       currency,
       merchantName: merchant_name,
       idempotencyKey: idempotency_key,
+      latitude: geoResult.data.latitude,
+      longitude: geoResult.data.longitude,
     });
+
+    if (result.status === "COMPLETED" && !result.reused) {
+      await notifyTransactionEmail({
+        toEmail: userEmail,
+        transactionId: result.transactionId,
+        type: 'CARD_SPEND',
+        status: result.status,
+        amountInCents: amount_in_cents,
+        currency,
+        occurredAt: new Date(),
+        extraRows: [{ label: 'Comercio', value: merchant_name }],
+      });
+    }
 
     res.status(result.status === "COMPLETED" ? 201 : 200).json({
       status: "success",
       data: { transaction_id: result.transactionId, status: result.status },
     });
   } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_MISMATCH") {
+      return res.status(409).json({
+        status: "error",
+        error: { code: "IDEMPOTENCY_KEY_MISMATCH", message: "La clave ya se uso con otros datos", details: null },
+      });
+    }
     if (err.message === "CARD_NOT_FOUND") {
       return res.status(404).json({
         status: "error",

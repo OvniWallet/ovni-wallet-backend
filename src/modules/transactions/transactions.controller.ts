@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../../middlewares/is-auth.middleware';
 import { TransactionsService } from './transactions.service';
 import { depositSchema } from './dto/deposit.dto';
+import { notifyTransactionEmail } from '../../integrations/ses/ses.notifications';
 
 export class TransactionsController {
   private transactionsService = new TransactionsService();
@@ -31,8 +32,9 @@ export class TransactionsController {
   deposit = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user?.id;
+      const userEmail = req.user?.email;
 
-      if (!userId) {
+      if (!userId || !userEmail) {
         const error = new Error('No autorizado');
         (error as any).statusCode = 401;
         throw error;
@@ -49,6 +51,18 @@ export class TransactionsController {
       }
 
       const result = await this.transactionsService.processDeposit(userId, parseResult.data);
+
+      if (!(result as any)._idempotent_reused) {
+        await notifyTransactionEmail({
+          toEmail: userEmail,
+          transactionId: result.transaction_id,
+          type: 'DEPOSIT',
+          status: result.status,
+          amountInCents: parseResult.data.amount_in_cents,
+          currency: parseResult.data.currency,
+          occurredAt: new Date(),
+        });
+      }
 
       res.status(201).json({
         status: 'success',

@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { getQuote, executeExchangeOperation } from "./exchange.service";
 import { getWalletIdByUserId } from "../../shared/wallet-lookup";
+import { notifyTransactionEmail } from "../../integrations/ses/ses.notifications";
+import { geolocationSchema } from "../../shared/geolocation";
 
 export async function getQuoteController(req: Request, res: Response) {
   try {
@@ -37,9 +39,19 @@ export async function getQuoteController(req: Request, res: Response) {
 export async function postExchangeController(req: Request, res: Response) {
   try {
     const userId = (req as any).user.id;
-    const walletId = await getWalletIdByUserId(userId);
+    const userEmail = (req as any).user.email;
 
-    const { source_currency, target_currency, source_amount_cents, idempotency_key } = req.body;
+    const { source_currency, target_currency, source_amount_cents, idempotency_key, latitude, longitude } = req.body;
+
+    const geoResult = geolocationSchema.safeParse({ latitude, longitude });
+    if (!geoResult.success) {
+      return res.status(400).json({
+        status: "error",
+        error: { code: "INVALID_INPUT", message: "Coordenadas inválidas", details: geoResult.error.format() },
+      });
+    }
+
+    const walletId = await getWalletIdByUserId(userId);
 
     const result = await executeExchangeOperation({
       userId,
@@ -48,17 +60,47 @@ export async function postExchangeController(req: Request, res: Response) {
       targetCurrency: target_currency,
       sourceAmountCents: source_amount_cents,
       idempotencyKey: idempotency_key,
+      latitude: geoResult.data.latitude,
+      longitude: geoResult.data.longitude,
     });
+
+    if (!result.reused) {
+      await notifyTransactionEmail({
+        toEmail: userEmail,
+        transactionId: result.transactionId,
+        type: 'EXCHANGE',
+        status: 'COMPLETED',
+        amountInCents: source_amount_cents,
+        currency: source_currency,
+        occurredAt: new Date(),
+        extraRows: [
+          {
+            label: 'Convertido a',
+            value: `${((result.targetAmountCents ?? 0) / 100).toFixed(2)} ${target_currency}`,
+          },
+          {
+            label: 'Tasa aplicada',
+            value: result.rateApplied ? result.rateApplied.toFixed(10) : 'N/D',
+          },
+        ],
+      });
+    }
 
     res.status(201).json({
       status: "success",
       data: {
         transaction_id: result.transactionId,
-        rate_applied: result.rateApplied.toFixed(10),
-        target_amount_cents: result.targetAmountCents,
+        rate_applied: result.rateApplied?.toFixed(10) ?? null,
+        target_amount_cents: result.targetAmountCents ?? null,
       },
     });
   } catch (err: any) {
+    if (err.message === "IDEMPOTENCY_KEY_MISMATCH") {
+      return res.status(409).json({
+        status: "error",
+        error: { code: "IDEMPOTENCY_KEY_MISMATCH", message: "La clave ya se uso con otros datos", details: null },
+      });
+    }
     if (err.message === "INSUFFICIENT_FUNDS") {
       return res.status(422).json({
         status: "error",
